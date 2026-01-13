@@ -34,7 +34,10 @@ const App: React.FC = () => {
   });
   
   const [logs, setLogs] = useState<{ id: number, text: string, author: string, time: string }[]>([
-    { id: 1, text: "kernel initialized. waiting for input...", author: "sys", time: "09:00:01" }
+    { id: 1, text: "booting kernel v5.15.0-generic...", author: "sys", time: "09:00:00" },
+    { id: 2, text: "mounting file systems... done.", author: "sys", time: "09:00:01" },
+    { id: 3, text: "starting workflow_optimizer_pro service...", author: "sys", time: "09:00:02" },
+    { id: 4, text: "ready. waiting for user input.", author: "sys", time: "09:00:03" }
   ]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -164,7 +167,7 @@ const App: React.FC = () => {
         {/* Center: The Terminal Board */}
         <div className="flex-1 flex flex-col items-center justify-start pt-4 lg:pt-10">
           <div className="w-full max-w-[600px] mb-2 flex justify-between items-end text-xs font-mono">
-             <div className="opacity-50">/usr/bin/chess_engine --interactive</div>
+             <div className="opacity-50">/usr/bin/workflow_opt --interactive</div>
              {gameState.isCheck && <span className="text-[#ff5555] bg-[#300] px-2 animate-pulse">WARN: DEADLOCK DETECTED</span>}
              {gameState.isCheckmate && <span className="text-[#00ff00] bg-[#030] px-2">SUCCESS: PROCESS COMPLETED</span>}
           </div>

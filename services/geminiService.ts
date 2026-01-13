@@ -1,10 +1,23 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Initialize securely - assumes process.env.API_KEY is available and valid per guidelines
-// The build process (Vite) will replace process.env.API_KEY with the actual string.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const MODEL_ID = 'gemini-3-flash-preview';
+
+// Lazy singleton to hold the AI instance
+let aiInstance: GoogleGenAI | null = null;
+
+/**
+ * Safely retrieves or initializes the AI instance.
+ * Prevents "An API Key must be set" error from crashing the app at module load time.
+ */
+const getAi = (): GoogleGenAI => {
+  if (!aiInstance) {
+    // Use a placeholder if the key is missing to allow the app to render.
+    // Actual API calls will fail with a 403/Error, which we handle gracefully in the UI.
+    const apiKey = process.env.API_KEY || "missing_key_placeholder";
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+};
 
 /**
  * Generates a response from the "Senior Consultant" (AI Tutor).
@@ -35,6 +48,7 @@ export const getAiMoveAndCommentary = async (
   `;
 
   try {
+    const ai = getAi();
     const response = await ai.models.generateContent({
       model: MODEL_ID,
       contents: prompt,
@@ -72,7 +86,8 @@ export const getAiMoveAndCommentary = async (
     };
   } catch (error) {
     console.error("Gemini Error:", error);
-    return { move: '', commentary: "err: connection timeout." };
+    // Return a stealth-appropriate error message
+    return { move: '', commentary: "err: connection_refused. check_api_uplink." };
   }
 };
 
@@ -97,12 +112,13 @@ export const analyzeUserMove = async (
   `;
 
   try {
+    const ai = getAi();
     const response = await ai.models.generateContent({
       model: MODEL_ID,
       contents: prompt,
     });
     return response.text || "processing...";
   } catch (e) {
-    return "err: analysis failed.";
+    return "err: analysis_timeout.";
   }
 };
