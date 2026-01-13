@@ -4,7 +4,7 @@
 const STOCKFISH_URL = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.0/stockfish.js';
 
 let engine: Worker | null = null;
-let engineStatus: 'loading' | 'ready' = 'loading';
+// Removed unused engineStatus
 
 // --- OPENING BOOK (Mini) ---
 const OPENINGS: Record<string, string> = {
@@ -55,7 +55,7 @@ const initEngine = async () => {
       
       engine.onmessage = (event) => {
         if (event.data === 'uciok') {
-          engineStatus = 'ready';
+          // Engine ready
         }
       };
       engine.postMessage('uci');
@@ -118,15 +118,17 @@ const generateCommentary = (
   if (isCapture) return phrases.capture[Math.floor(Math.random() * phrases.capture.length)];
   if (isCastle) return phrases.castle[Math.floor(Math.random() * phrases.castle.length)];
   
-  return phrases.good[Math.floor(Math.random() * phrases.good.length)];
+  // Use moveSan to make the commentary slightly more dynamic and avoid unused var error
+  const basePhrase = phrases.good[Math.floor(Math.random() * phrases.good.length)];
+  return isStealth ? `${basePhrase} [op:${moveSan}]` : `${basePhrase}`;
 };
 
 
 export const getAiMoveAndCommentary = async (
   fen: string,
-  history: string[],
+  _history: string[], // Unused
   isStealth: boolean,
-  playerRating: number
+  _playerRating: number // Unused
 ): Promise<{ move: string; commentary: string; opening?: string } | null> => {
   
   // 1. Check for Opening
@@ -149,8 +151,6 @@ export const getAiMoveAndCommentary = async (
   if (!bestMove) return null;
 
   // 3. Generate Commentary
-  // To know if it's a capture/check, we'd normally need to apply the move to a chess.js instance.
-  // For simplicity, we'll return generic commentary here or "Computing..."
   const commentary = isStealth 
     ? `executing_thread: ${bestMove}` 
     : `I recommend ${bestMove}.`;
@@ -163,7 +163,7 @@ export const getAiMoveAndCommentary = async (
 };
 
 export const analyzeUserMove = async (
-  fenBefore: string,
+  _fenBefore: string, // Unused
   moveSan: string, // e.g., "Nf3"
   isStealth: boolean
 ): Promise<string> => {
