@@ -1,124 +1,176 @@
-import { GoogleGenAI, Type } from "@google/genai";
+// REPLACED GEMINI WITH STOCKFISH.JS (Open Source Engine)
+// No API Key required. Runs locally in the browser.
 
-const MODEL_ID = 'gemini-3-flash-preview';
+const STOCKFISH_URL = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.0/stockfish.js';
 
-// Lazy singleton to hold the AI instance
-let aiInstance: GoogleGenAI | null = null;
+let engine: Worker | null = null;
+let engineStatus: 'loading' | 'ready' = 'loading';
+
+// --- OPENING BOOK (Mini) ---
+const OPENINGS: Record<string, string> = {
+  'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq': 'King\'s Pawn Opening',
+  'rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq': 'Queen\'s Pawn Opening',
+  'rnbqkbnr/pppppppp/8/8/2P5/8/PP1PPPPP/RNBQKBNR b KQkq': 'English Opening',
+  'rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq': 'Réti Opening',
+  'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq': 'Open Game',
+  'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq': 'Sicilian Defense',
+  'rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq': 'French Defense',
+  'rnbqkbnr/pp1ppppp/2p5/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq': 'Caro-Kann Defense',
+  'rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR w KQkq': 'Closed Game',
+  'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq': 'Scandinavian Defense',
+};
+
+// --- COMMENTARY TEMPLATES ---
+const STEALTH_PHRASES = {
+  opening: ["initializing protocols...", "loading standard config...", "handshake initiated..."],
+  capture: ["garbage collection executed.", "pid terminated.", "freeing memory address.", "process kill -9 sent."],
+  check: ["interrupt signal received!", "warning: high latency detected.", "deadlock risk increasing."],
+  castle: ["backup routine successful.", "data migration complete.", "secure shell established."],
+  good: ["optimization successful.", "efficiency +15%.", "cpu load nominal."],
+  bad: ["segfault detected.", "memory leak identified.", "critical error in logic."],
+  blunder: ["kernel panic imminent.", "fatal exception.", "system crash risk 99%."]
+};
+
+const COACH_PHRASES = {
+  opening: ["Let's control the center.", "Develop your pieces early.", "King safety is priority."],
+  capture: ["Material advantage gained.", "Good trade.", "Removing the defender."],
+  check: ["Keep the pressure on!", "The King is under attack.", "Force a response."],
+  castle: ["King is safe now.", "Rooks are connected.", "Good defensive measure."],
+  good: ["Solid move.", "Improving position.", "Nice find."],
+  bad: ["That leaves you vulnerable.", "Careful, check your diagonals.", "A bit passive."],
+  blunder: ["Oh no, you dropped a piece!", "That was a mistake.", "Watch out!"]
+};
+
+// Initialize Stockfish Worker with Blob to avoid CORS
+const initEngine = async () => {
+  if (!engine && typeof Worker !== 'undefined') {
+    try {
+      const response = await fetch(STOCKFISH_URL);
+      if (!response.ok) throw new Error('Network response was not ok');
+      const script = await response.text();
+      const blob = new Blob([script], { type: 'application/javascript' });
+      const workerUrl = URL.createObjectURL(blob);
+      
+      engine = new Worker(workerUrl);
+      
+      engine.onmessage = (event) => {
+        if (event.data === 'uciok') {
+          engineStatus = 'ready';
+        }
+      };
+      engine.postMessage('uci');
+      engine.postMessage('isready');
+    } catch (error) {
+      console.error('Failed to initialize Stockfish:', error);
+    }
+  }
+};
+
+initEngine();
 
 /**
- * Safely retrieves or initializes the AI instance.
- * Prevents "An API Key must be set" error from crashing the app at module load time.
+ * Gets the best move from Stockfish.
  */
-const getAi = (): GoogleGenAI => {
-  if (!aiInstance) {
-    // Use a placeholder if the key is missing to allow the app to render.
-    // Actual API calls will fail with a 403/Error, which we handle gracefully in the UI.
-    const apiKey = process.env.API_KEY || "missing_key_placeholder";
-    aiInstance = new GoogleGenAI({ apiKey });
-  }
-  return aiInstance;
+const getBestMoveFromStockfish = (fen: string, depth: number = 10): Promise<{ bestMove: string, eval: number }> => {
+  return new Promise((resolve) => {
+    if (!engine) {
+      // If engine failed to load, return empty (Board handles fallback)
+      resolve({ bestMove: '', eval: 0 });
+      return;
+    }
+
+    let bestMove = '';
+    
+    // Listener for this specific request
+    const listener = (event: MessageEvent) => {
+      const line = event.data;
+      if (line.startsWith('bestmove')) {
+        bestMove = line.split(' ')[1];
+        engine?.removeEventListener('message', listener);
+        resolve({ bestMove, eval: 0 }); // Simplify eval for now as parsing info lines is complex
+      }
+    };
+
+    engine.addEventListener('message', listener);
+    engine.postMessage(`position fen ${fen}`);
+    engine.postMessage(`go depth ${depth}`);
+  });
 };
 
 /**
- * Generates a response from the "Senior Consultant" (AI Tutor).
- * It adapts the persona based on stealth mode.
+ * Generates commentary based on move properties.
  */
+const generateCommentary = (
+  moveSan: string, 
+  isStealth: boolean, 
+  isCheck: boolean, 
+  isCapture: boolean,
+  isCastle: boolean,
+  openingName?: string
+): string => {
+  const phrases = isStealth ? STEALTH_PHRASES : COACH_PHRASES;
+  
+  if (openingName) {
+     return `${isStealth ? 'pattern match' : 'Opening'}: ${openingName}`;
+  }
+  
+  if (isCheck) return phrases.check[Math.floor(Math.random() * phrases.check.length)];
+  if (isCapture) return phrases.capture[Math.floor(Math.random() * phrases.capture.length)];
+  if (isCastle) return phrases.castle[Math.floor(Math.random() * phrases.castle.length)];
+  
+  return phrases.good[Math.floor(Math.random() * phrases.good.length)];
+};
+
+
 export const getAiMoveAndCommentary = async (
   fen: string,
   history: string[],
   isStealth: boolean,
   playerRating: number
 ): Promise<{ move: string; commentary: string; opening?: string } | null> => {
-  const persona = isStealth
-    ? "You are a Linux Kernel Log. Output concise system messages. Refer to pieces as processes, threads, sockets, etc. Lowercase only. No punctuation if possible. Be cryptic but logical."
-    : "You are a Grandmaster Chess Coach. Be encouraging but strict. Focus on fundamentals for a 650 ELO player.";
-
-  const prompt = `
-    ${persona}
-    
-    Current Game State (FEN): ${fen}
-    Move History: ${history.join(', ')}
-    Opponent Rating: ${playerRating} (Approx 650-800)
-    
-    Your goal:
-    1. Analyze the position.
-    2. Identify the Chess Opening Name (if applicable, e.g., 'Sicilian Defense').
-    3. Determine the best move for the side to play next.
-    4. Explain the move briefly (max 1 sentence).
-  `;
-
-  try {
-    const ai = getAi();
-    const response = await ai.models.generateContent({
-      model: MODEL_ID,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            bestMove: {
-              type: Type.STRING,
-              description: "Standard Algebraic Notation (e.g., Nf3, O-O)",
-            },
-            explanation: {
-              type: Type.STRING,
-              description: "Brief explanation of the move.",
-            },
-            openingName: {
-              type: Type.STRING,
-              description: "The name of the current chess opening or variation.",
-            }
-          },
-          propertyOrdering: ["bestMove", "explanation", "openingName"],
-        }
-      }
-    });
-
-    const text = response.text;
-    if (!text) return null;
-    
-    const data = JSON.parse(text);
-    return {
-      move: data.bestMove,
-      commentary: data.explanation,
-      opening: data.openingName
-    };
-  } catch (error) {
-    console.error("Gemini Error:", error);
-    // Return a stealth-appropriate error message
-    return { move: '', commentary: "err: connection_refused. check_api_uplink." };
+  
+  // 1. Check for Opening
+  // We use a simplified check by looking up the FEN minus move counters
+  const fenParts = fen.split(' ');
+  const positionFen = fenParts.slice(0, 4).join(' '); // pieces + turn + castles + enpassant
+  let openingName = undefined;
+  
+  // Simple check for opening in our mini-book (this is very basic, real books use trie structures)
+  for (const [key, name] of Object.entries(OPENINGS)) {
+     if (fen.includes(key) || key.includes(positionFen)) {
+        openingName = name;
+        break;
+     }
   }
+
+  // 2. Get Best Move from Engine
+  const { bestMove } = await getBestMoveFromStockfish(fen, 5); // Depth 5 is fast and beats 650 ELO easily
+  
+  if (!bestMove) return null;
+
+  // 3. Generate Commentary
+  // To know if it's a capture/check, we'd normally need to apply the move to a chess.js instance.
+  // For simplicity, we'll return generic commentary here or "Computing..."
+  const commentary = isStealth 
+    ? `executing_thread: ${bestMove}` 
+    : `I recommend ${bestMove}.`;
+
+  return {
+    move: bestMove, // Stockfish returns "e2e4" (LAN), chess.js .move() accepts this
+    commentary: commentary,
+    opening: openingName
+  };
 };
 
-/**
- * Asks Gemini to explain the user's last move (Validation/Tutoring).
- */
 export const analyzeUserMove = async (
   fenBefore: string,
-  moveSan: string,
+  moveSan: string, // e.g., "Nf3"
   isStealth: boolean
 ): Promise<string> => {
-  const persona = isStealth
-    ? "System Audit Log. Validate the efficiency of the last operation. Use terms like 'optimization', 'memory leak', 'latency'. Short lowercase output."
-    : "Chess coach. Simple terms.";
+  // Simple heuristic: If it's a check or capture, acknowledge it.
+  const isCheck = moveSan.includes('+') || moveSan.includes('#');
+  const isCapture = moveSan.includes('x');
+  const isCastle = moveSan.includes('O-O');
 
-  const prompt = `
-    ${persona}
-    The player just played: ${moveSan}
-    Position was: ${fenBefore}
-    
-    Was this a good move (Good, Inaccuracy, Blunder)? Why? Keep it short.
-  `;
-
-  try {
-    const ai = getAi();
-    const response = await ai.models.generateContent({
-      model: MODEL_ID,
-      contents: prompt,
-    });
-    return response.text || "processing...";
-  } catch (e) {
-    return "err: analysis_timeout.";
-  }
+  return generateCommentary(moveSan, isStealth, isCheck, isCapture, isCastle);
 };
