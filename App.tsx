@@ -7,7 +7,6 @@ import {
   MessageSquare, 
   Eye, 
   EyeOff,
-  RefreshCw,
   Hash,
   Command
 } from 'lucide-react';
@@ -174,7 +173,6 @@ const App: React.FC = () => {
             isStealth={isStealth} 
             onLogUpdate={addLog}
             gameInstance={gameInstance}
-            setGameInstance={setGameInstance}
             gameState={gameState}
             setGameState={setGameState}
           />

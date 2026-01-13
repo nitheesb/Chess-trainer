@@ -8,7 +8,6 @@ interface BoardProps {
   isStealth: boolean;
   onLogUpdate: (log: string, author: 'Consultant' | 'System') => void;
   gameInstance: Chess;
-  setGameInstance: React.Dispatch<React.SetStateAction<Chess>>;
   gameState: GameState;
   setGameState: React.Dispatch<React.SetStateAction<GameState>>;
 }
@@ -17,7 +16,6 @@ const Board: React.FC<BoardProps> = ({
   isStealth, 
   onLogUpdate, 
   gameInstance, 
-  setGameInstance,
   gameState,
   setGameState
 }) => {
@@ -162,7 +160,7 @@ const Board: React.FC<BoardProps> = ({
                    Let's use Unicode for normal mode but styled for dark theme */}
                {piece.color === 'w' 
                  ? { p: '♙', r: '♖', n: '♘', b: '♗', q: '♕', k: '♔' }[piece.type] 
-                 : { p: '♟', r: '♜', n: '♞', b: '♝', q: '♛', k: '♚' }[piece.type]
+                 : { p: '♟', r: '♜', n: '♞', b: '♝', q: '♛', k: '♔' }[piece.type]
                }
              </span>
           )
