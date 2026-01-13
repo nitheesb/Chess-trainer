@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Initialize securely - assumes process.env.API_KEY is available and valid per guidelines
+// The build process (Vite) will replace process.env.API_KEY with the actual string.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const MODEL_ID = 'gemini-3-flash-preview';
@@ -14,7 +15,7 @@ export const getAiMoveAndCommentary = async (
   history: string[],
   isStealth: boolean,
   playerRating: number
-): Promise<{ move: string; commentary: string } | null> => {
+): Promise<{ move: string; commentary: string; opening?: string } | null> => {
   const persona = isStealth
     ? "You are a Linux Kernel Log. Output concise system messages. Refer to pieces as processes, threads, sockets, etc. Lowercase only. No punctuation if possible. Be cryptic but logical."
     : "You are a Grandmaster Chess Coach. Be encouraging but strict. Focus on fundamentals for a 650 ELO player.";
@@ -28,8 +29,9 @@ export const getAiMoveAndCommentary = async (
     
     Your goal:
     1. Analyze the position.
-    2. Determine the best move for the side to play next.
-    3. Explain the move briefly (max 1 sentence).
+    2. Identify the Chess Opening Name (if applicable, e.g., 'Sicilian Defense').
+    3. Determine the best move for the side to play next.
+    4. Explain the move briefly (max 1 sentence).
   `;
 
   try {
@@ -49,8 +51,12 @@ export const getAiMoveAndCommentary = async (
               type: Type.STRING,
               description: "Brief explanation of the move.",
             },
+            openingName: {
+              type: Type.STRING,
+              description: "The name of the current chess opening or variation.",
+            }
           },
-          propertyOrdering: ["bestMove", "explanation"],
+          propertyOrdering: ["bestMove", "explanation", "openingName"],
         }
       }
     });
@@ -61,7 +67,8 @@ export const getAiMoveAndCommentary = async (
     const data = JSON.parse(text);
     return {
       move: data.bestMove,
-      commentary: data.explanation
+      commentary: data.explanation,
+      opening: data.openingName
     };
   } catch (error) {
     console.error("Gemini Error:", error);

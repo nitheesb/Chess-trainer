@@ -46,6 +46,9 @@ const Board: React.FC<BoardProps> = ({
             try {
               gameInstance.move(result.move);
               updateState();
+              if (result.opening && result.opening !== 'Unknown') {
+                  onLogUpdate(`detecting pattern: ${result.opening}`, 'System');
+              }
               onLogUpdate(result.commentary, 'Consultant');
             } catch (e) {
               const moves = gameInstance.moves();
@@ -53,7 +56,7 @@ const Board: React.FC<BoardProps> = ({
                 const randomMove = moves[Math.floor(Math.random() * moves.length)];
                 gameInstance.move(randomMove);
                 updateState();
-                onLogUpdate("Executing fallback protocol.", 'Consultant');
+                onLogUpdate("executing fallback protocol.", 'Consultant');
               }
             }
         }
