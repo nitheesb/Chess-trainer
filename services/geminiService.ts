@@ -1,8 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
-const apiKey = process.env.API_KEY;
-// Initialize securely - assumes process.env.API_KEY is available
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+// Initialize securely - assumes process.env.API_KEY is available and valid per guidelines
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const MODEL_ID = 'gemini-3-flash-preview';
 
@@ -16,8 +15,6 @@ export const getAiMoveAndCommentary = async (
   isStealth: boolean,
   playerRating: number
 ): Promise<{ move: string; commentary: string } | null> => {
-  if (!ai) return { move: '', commentary: "err: api key missing." };
-
   const persona = isStealth
     ? "You are a Linux Kernel Log. Output concise system messages. Refer to pieces as processes, threads, sockets, etc. Lowercase only. No punctuation if possible. Be cryptic but logical."
     : "You are a Grandmaster Chess Coach. Be encouraging but strict. Focus on fundamentals for a 650 ELO player.";
@@ -33,12 +30,6 @@ export const getAiMoveAndCommentary = async (
     1. Analyze the position.
     2. Determine the best move for the side to play next.
     3. Explain the move briefly (max 1 sentence).
-    
-    Format response as JSON:
-    {
-      "bestMove": "Standard Algebraic Notation (e.g., Nf3, O-O)",
-      "explanation": "Your explanation here."
-    }
   `;
 
   try {
@@ -46,7 +37,21 @@ export const getAiMoveAndCommentary = async (
       model: MODEL_ID,
       contents: prompt,
       config: {
-        responseMimeType: "application/json"
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            bestMove: {
+              type: Type.STRING,
+              description: "Standard Algebraic Notation (e.g., Nf3, O-O)",
+            },
+            explanation: {
+              type: Type.STRING,
+              description: "Brief explanation of the move.",
+            },
+          },
+          propertyOrdering: ["bestMove", "explanation"],
+        }
       }
     });
 
@@ -72,8 +77,6 @@ export const analyzeUserMove = async (
   moveSan: string,
   isStealth: boolean
 ): Promise<string> => {
-  if (!ai) return "err: consultant offline.";
-
   const persona = isStealth
     ? "System Audit Log. Validate the efficiency of the last operation. Use terms like 'optimization', 'memory leak', 'latency'. Short lowercase output."
     : "Chess coach. Simple terms.";
