@@ -4,6 +4,7 @@
 const STOCKFISH_URL = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.0/stockfish.js';
 
 let engine: Worker | null = null;
+let isEngineReady = false;
 
 // --- OPENING BOOK (Mini) ---
 const OPENINGS: Record<string, string> = {
@@ -17,46 +18,6 @@ const OPENINGS: Record<string, string> = {
   'rnbqkbnr/pp1ppppp/2p5/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq': 'Caro-Kann',
   'rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR w KQkq': 'Closed Game',
   'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq': 'Scandinavian',
-};
-
-// --- COMMENTARY LOGIC ---
-// We want "Stealth" logs that actually teach chess concepts.
-// Format: "system_msg: <concept>"
-
-const CONCEPT_LOGS = {
-  opening: [
-    "init: control_center", 
-    "init: develop_knights", 
-    "init: develop_bishops", 
-    "protocol: castle_early"
-  ],
-  capture: [
-    "material_acquired", 
-    "threat_eliminated", 
-    "exchange_complete", 
-    "unit_captured"
-  ],
-  check: [
-    "alert: king_exposed", 
-    "priority: defend_king", 
-    "threat: immediate"
-  ],
-  castle: [
-    "security_patch: king_safety", 
-    "network: rooks_connected", 
-    "defense_matrix: enabled"
-  ],
-  good: [
-    "strategy: space_advantage", 
-    "tactic: pin_created", 
-    "tactic: fork_opportunity", 
-    "position: improved",
-    "structure: solid"
-  ],
-  blunder: [
-    "error: material_hang", 
-    "critical: defense_breach"
-  ]
 };
 
 // Initialize Stockfish Worker with Blob to avoid CORS
@@ -73,7 +34,7 @@ const initEngine = async () => {
       
       engine.onmessage = (event) => {
         if (event.data === 'uciok') {
-          // Engine ready
+          isEngineReady = true;
         }
       };
       engine.postMessage('uci');
@@ -92,6 +53,7 @@ initEngine();
 const getBestMoveFromStockfish = (fen: string, depth: number = 10): Promise<{ bestMove: string, eval: number }> => {
   return new Promise((resolve) => {
     if (!engine) {
+      // Return empty if not ready yet
       resolve({ bestMove: '', eval: 0 });
       return;
     }
@@ -116,9 +78,8 @@ const getBestMoveFromStockfish = (fen: string, depth: number = 10): Promise<{ be
 /**
  * Generates commentary based on move properties.
  */
-const generateCommentary = (
+const generateStealthCommentary = (
   moveSan: string, 
-  isStealth: boolean, 
   isCheck: boolean, 
   isCapture: boolean, 
   isCastle: boolean,
@@ -126,25 +87,22 @@ const generateCommentary = (
 ): string => {
   
   if (openingName) {
-     return `protocol_match: ${openingName.toLowerCase().replace(/ /g, '_')}`;
+     return `config_loaded: ${openingName.toLowerCase().replace(/ /g, '_')}_protocol`;
   }
   
-  let basePhrase = "";
-  if (isCheck) basePhrase = CONCEPT_LOGS.check[Math.floor(Math.random() * CONCEPT_LOGS.check.length)];
-  else if (isCapture) basePhrase = CONCEPT_LOGS.capture[Math.floor(Math.random() * CONCEPT_LOGS.capture.length)];
-  else if (isCastle) basePhrase = CONCEPT_LOGS.castle[Math.floor(Math.random() * CONCEPT_LOGS.castle.length)];
-  else basePhrase = CONCEPT_LOGS.good[Math.floor(Math.random() * CONCEPT_LOGS.good.length)];
+  if (isCheck) return `WARN: interrupt_request_received [${moveSan}]`;
+  if (isCapture) return `garbage_collection: resource_freed [${moveSan}]`;
+  if (isCastle) return `security_update: firewall_enabled [${moveSan}]`;
   
-  // Combine concept with the move for clarity
-  return `${basePhrase} [mv:${moveSan}]`;
+  return `process_executed: ${moveSan} (latency: 12ms)`;
 };
 
 
 export const getAiMoveAndCommentary = async (
   fen: string,
   _history: string[], 
-  isStealth: boolean,
-  _playerRating: number 
+  _isStealth: boolean, // Kept to satisfy interface, prefixed to ignore
+  elo: number 
 ): Promise<{ move: string; commentary: string; opening?: string } | null> => {
   
   const fenParts = fen.split(' ');
@@ -158,16 +116,14 @@ export const getAiMoveAndCommentary = async (
      }
   }
 
-  // Lower depth for quicker, more human-like "650 elo" errors sometimes, 
-  // but Stockfish at depth 1 is still strong. Depth 5 is fine.
-  const { bestMove } = await getBestMoveFromStockfish(fen, 5);
+  // Adjust depth based on "ELO" request
+  const depth = elo < 1000 ? 5 : 12;
+
+  const { bestMove } = await getBestMoveFromStockfish(fen, depth);
   
   if (!bestMove) return null;
 
-  // We don't have the SAN for the engine move yet (Board calculates it), 
-  // so we return a placeholder in commentary or just the LAN.
-  // The Board component will generate the final commentary with the correct SAN.
-  const commentary = `calc_complete: ${bestMove}`;
+  const commentary = `daemon: executing_task ${bestMove}`;
 
   return {
     move: bestMove,
@@ -185,5 +141,27 @@ export const analyzeUserMove = async (
   const isCapture = moveSan.includes('x');
   const isCastle = moveSan.includes('O-O');
 
-  return generateCommentary(moveSan, isStealth, isCheck, isCapture, isCastle);
+  // We use the isStealth flag to perhaps change the tone slightly, 
+  // but for this app, we always want the "Terminal" feel.
+  // We use the variable here to silence the linter.
+  const prefix = isStealth ? 'sys' : 'log';
+
+  return `${prefix}: ${generateStealthCommentary(moveSan, isCheck, isCapture, isCastle)}`;
+};
+
+export const getHint = async (fen: string): Promise<{ from: string, to: string, log: string } | null> => {
+  if (!isEngineReady) return null;
+  
+  const { bestMove } = await getBestMoveFromStockfish(fen, 10);
+  
+  if (!bestMove) return null;
+  
+  const from = bestMove.substring(0, 2);
+  const to = bestMove.substring(2, 4);
+  
+  return {
+    from,
+    to,
+    log: `optimization_suggested: move thread ${from} to address ${to}`
+  };
 };

@@ -1,3 +1,4 @@
+
 export enum PlayerColor {
   WHITE = 'w',
   BLACK = 'b'
@@ -10,21 +11,24 @@ export interface GameState {
   isCheckmate: boolean;
   history: string[];
   captured: string[];
+  lastMoveSan?: string;
 }
 
-export interface Puzzle {
+export interface Mission {
   id: string;
-  fen: string;
-  solution: string[]; // LAN or SAN
-  description: string;
-  difficulty: 'Junior' | 'Senior' | 'Executive';
+  title: string;
+  description: string; // The "Stealth" description
+  xpReward: number;
+  condition: 'move_piece' | 'control_center' | 'castle' | 'capture' | 'check';
+  targetPiece?: string; // 'n', 'p', etc.
+  completed: boolean;
 }
 
 export interface UserStats {
-  rating: number; // The "Efficiency Score"
-  xp: number; // "Productivity Points"
+  level: 'Intern' | 'Junior Dev' | 'Senior Dev' | 'Lead Architect';
+  xp: number; 
   streak: number;
-  completedTasks: number;
+  ticketsClosed: number;
 }
 
 export type StealthPieceType = 'Intern' | 'Lead' | 'Manager' | 'VP' | 'Director' | 'CEO';
